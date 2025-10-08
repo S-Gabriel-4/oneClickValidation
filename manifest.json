@@ -1,0 +1,49 @@
+{
+  "id": "com.example.csv.oneclick",
+  "name": "CSV One-Click Validate & Upload",
+  "description": "Validiert CSV (Duplikate, Datum etc.) und lädt bei Erfolg ins Staging-Modell.",
+  "version": "1.0.0",
+  "vendor": "You",
+  "newInstancePrefix": "CSVOneClick",
+
+  "properties": {
+    "rowCount":       { "type": "number", "default": 0 },
+    "fileName":       { "type": "string", "default": "" },
+    "dupCount":       { "type": "number", "default": 0 },
+    "errorsText":     { "type": "string", "default": "" },
+    "isValid":        { "type": "boolean", "default": false },
+
+    "maxMonthsAge":   { "type": "number", "default": 1, "description": "Maximales Alter in Monaten" },
+    "dateColumn":     { "type": "string", "default": "Date" },
+    "measureColumn":  { "type": "string", "default": "Quantity" },
+    "invoiceCol":     { "type": "string", "default": "Invoice_Number" },
+    "positionCol":    { "type": "string", "default": "Invoice_position_number" },
+
+    "uploadEndpoint": { "type": "string", "default": "", "description": "Proxy/Endpoint für Data Import Service" },
+    "modelId":        { "type": "string", "default": "", "description": "Ziel-Model/Dataset ID" }
+  },
+
+  "methods": {
+    "getRowCount":        { "returnType": "number" },
+    "getFileName":        { "returnType": "string" },
+    "getDuplicateCount":  { "returnType": "number" },
+    "getErrorsText":      { "returnType": "string" },
+    "startUpload":        { "returnType": "string" }
+  },
+
+  "events": {
+    "validated":     { "description": "Fires nach Validierung (ok/fehler) mit Detail." },
+    "uploadStart":   { "description": "Upload beginnt." },
+    "uploadDone":    { "description": "Upload erfolgreich." },
+    "uploadFailed":  { "description": "Upload fehlgeschlagen." }
+  },
+
+  "webcomponents": [
+    {
+      "kind": "main",
+      "tag": "csv-oneclick",
+      "url": "https://YOUR_HOST/csv-oneclick.js"
+      "integrity": "sha256-l1ci2RpCVdkbuSsBNs24Qg5ZQsnvR1hGKLE8j+JDLF0="
+    }
+  ]
+}
