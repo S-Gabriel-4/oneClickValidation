@@ -24,11 +24,13 @@
   },
 
   "methods": {
-    "getRowCount":        { "returnType": "number" },
-    "getFileName":        { "returnType": "string" },
-    "getDuplicateCount":  { "returnType": "number" },
-    "getErrorsText":      { "returnType": "string" },
-    "getSignatureJson":   { "returnType": "string" }
+    "getRowCount":       { "returnType": "number" },
+    "getFileName":       { "returnType": "string" },
+    "getDuplicateCount": { "returnType": "number" },
+    "getErrorsText":     { "returnType": "string" },
+    "getSigRows":        { "returnType": "number" },
+    "getSigMinYM":       { "returnType": "number" },
+    "getSigMaxYM":       { "returnType": "number" }
   },
 
   "events": {
