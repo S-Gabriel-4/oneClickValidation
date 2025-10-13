@@ -277,41 +277,57 @@ class CsvOneClick extends HTMLElement {
     return { count: dups.length, dups };
   }
 
-  _scanDatesTooOld(text, dateColName, measureColName, maxMonths){
-    const out = [];
-    const {header, rows} = this._parseCSV(text);
-    if (!header.length) return out;
+_scanDatesTooOld(text, dateColName, measureColName, maxMonths){
+  const out = [];
+  const {header, rows} = this._parseCSV(text);
+  if (!header.length || !rows.length) return out;
 
-    const name = n => n.toLowerCase().replace(/[\s_]+/g,'');
-    const idxDate = header.findIndex(h => name(h) === name(dateColName));
-    const idxMeas = header.findIndex(h => name(h) === name(measureColName));
-    if (idxDate < 0) return out; // keine Date-Spalte => kein Date-Check
+  const norm = n => String(n||"").toLowerCase().replace(/[\s_]+/g,'');
+  const idxDate = header.findIndex(h => norm(h) === norm(dateColName||"Date"));
+  const idxMeas = header.findIndex(h => norm(h) === norm(measureColName||"Quantity"));
+  if (idxDate < 0) return out;
 
-    const today = new Date();
-    const todayYear = today.getFullYear();
-    const todayMonth = today.getMonth()+1;
+  const today = new Date();
+  const todayYear = today.getFullYear();
+  const todayMonth = today.getMonth() + 1;
+  const ym = (y,m)=> y*12 + m;
+  const limit = parseInt(maxMonths,10) || 1;
 
-    const ym = (y,m)=> y*12+m;
-
-    for (let i=0;i<rows.length;i++){
-      // nur Zeilen mit anchorMeasure prüfen (wie dein Code)
-      if (idxMeas >= 0){
-        const meas = (rows[i][idxMeas]||"").trim();
-        if (meas === "" || meas === "0") continue;
-      }
-
-      const date = (rows[i][idxDate]||"").trim(); // erwartet YYYY-MM-DD
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-
-      const y = parseInt(date.slice(0,4),10);
-      const m = parseInt(date.slice(5,7),10);
-      const diff = ym(todayYear,todayMonth) - ym(y,m);
-      if (diff > maxMonths){
-        out.push("Date error ("+date+") in row "+(i+2).toString()+" (CSV)"); // +2 wegen Header
-      }
+  for (let i=0;i<rows.length;i++){
+    // Anker-Measure: Zeilen ohne/nulle Quantity überspringen (wie bei dir)
+    if (idxMeas >= 0){
+      const rawQ = String(rows[i][idxMeas]||"").trim();
+      const q = parseFloat(rawQ.replace(',', '.'));
+      if (rawQ === "" || (!isNaN(q) && q === 0)) continue;
     }
-    return out;
+
+    const rawDate = String(rows[i][idxDate]||"").trim();
+    if (!rawDate) continue;
+
+    const parsed = parseYMD(rawDate); // {y,m,d, dashed} oder null
+    if (!parsed) continue;
+
+    const diff = ym(todayYear, todayMonth) - ym(parsed.y, parsed.m);
+    if (diff > limit){
+      // Info im Fehlertext im Ziel-Format YYYY-MM-DD ausgeben
+      out.push("Date error ("+parsed.dashed+") in row "+(i+2)+ " (CSV)");
+    }
   }
+  return out;
+
+  function parseYMD(s){
+    // 1) YYYYMMDD
+    if (/^\d{8}$/.test(s)){
+      const y = +s.slice(0,4), m = +s.slice(4,6), d = +s.slice(6,8);
+      return { y, m, d, dashed: `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}` };
+    }
+    // 2) YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)){
+      return { y:+s.slice(0,4), m:+s.slice(5,7), d:+s.slice(8,10), dashed: s };
+    }
+    return null;
+  }
+}
 
   _isValid(){ return this._errors.length === 0 && this._rows > 0; }
 
