@@ -200,6 +200,11 @@ class CsvOneClick extends HTMLElement {
       isValid: this._isValid(),
       errors: this._errors.slice()
     }}));
+
+    // Wenn alles ok -> Event, damit die Story den DataUpload-Starter öffnen kann
+  if (this._isValid()){
+  this.dispatchEvent(new CustomEvent('requestUpload', { detail: { fileName: this._fileName }}));
+}
   }
 
   _countRows(text){
@@ -351,5 +356,53 @@ _scanDatesTooOld(text, dateColName, measureColName, maxMonths){
 
   _emitProps(changes){ this.dispatchEvent(new CustomEvent('propertiesChanged',{detail:{properties:changes}})); }
   _escape(s){ return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+// ---- SIGNATUR: rows + minYM + maxYM ----
+_getSignature(dateColName, measureColName){
+  const {header, rows} = this._parseCSV(this._text);
+  const norm = n => String(n||"").toLowerCase().replace(/[\s_]+/g,'');
+  const idxDate = header.findIndex(h => norm(h) === norm(dateColName||"Date"));
+  const idxMeas = header.findIndex(h => norm(h) === norm(measureColName||"Quantity"));
+
+  let minYM = 999999, maxYM = 0, cnt = 0;
+
+  function parseYMD(s){
+    s = String(s||"").trim();
+    if (/^\d{8}$/.test(s)) { // YYYYMMDD
+      const y = +s.slice(0,4), m = +s.slice(4,6);
+      return y*100 + m;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) { // YYYY-MM-DD
+      return (+s.slice(0,4))*100 + (+s.slice(5,7));
+    }
+    return null;
+  }
+
+  for (let i=0;i<rows.length;i++){
+    if (idxMeas >= 0){
+      const rawQ = String(rows[i][idxMeas]||"").trim();
+      const q = parseFloat(rawQ.replace(',', '.'));
+      if (rawQ === "" || (!isNaN(q) && q === 0)) continue; // wie bei dir
+    }
+    const rawDate = idxDate>=0 ? String(rows[i][idxDate]||"").trim() : "";
+    const ym = parseYMD(rawDate);
+    if (ym != null){
+      if (ym < minYM) minYM = ym;
+      if (ym > maxYM) maxYM = ym;
+    }
+    cnt++;
+  }
+  if (minYM === 999999) minYM = 0;
+  return { rows: cnt|0, minYM, maxYM, fileName: this._fileName||"" };
+}
+
+// Story kann diese Signatur abholen:
+getSignatureJson(){
+  const dateCol   = this.getAttribute("datecolumn")||"Date";
+  const measureCol= this.getAttribute("measurecolumn")||"Quantity";
+  const sig = this._getSignature(dateCol, measureCol);
+  try { return JSON.stringify(sig); } catch(e){ return "{}"; }
+}
+  
 }
 customElements.define('csv-oneclick', CsvOneClick);
