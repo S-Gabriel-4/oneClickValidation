@@ -28,7 +28,7 @@
     "getFileName":        { "returnType": "string" },
     "getDuplicateCount":  { "returnType": "number" },
     "getErrorsText":      { "returnType": "string" },
-    "startUpload":        { "returnType": "string" }
+    "getSignatureJson":   { "returnType": "string" }
   },
 
   "events": {
