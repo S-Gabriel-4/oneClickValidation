@@ -403,6 +403,60 @@ getSignatureJson(){
   const sig = this._getSignature(dateCol, measureCol);
   try { return JSON.stringify(sig); } catch(e){ return "{}"; }
 }
+
+
+  
+// ---- Signatur intern berechnen (rows + minYM + maxYM) ----
+_getSignature(dateColName, measureColName){
+  const {header, rows} = this._parseCSV(this._text);
+  const norm = n => String(n||"").toLowerCase().replace(/[\s_]+/g,'');
+  const idxDate = header.findIndex(h => norm(h) === norm(dateColName||"Date"));
+  const idxMeas = header.findIndex(h => norm(h) === norm(measureColName||"Quantity"));
+
+  let minYM = 999999, maxYM = 0, cnt = 0;
+
+  function yymmFrom(val){
+    const s = String(val||"").trim();
+    if (/^\d{8}$/.test(s)) return (+s.slice(0,4))*100 + (+s.slice(4,6));     // YYYYMMDD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return (+s.slice(0,4))*100 + (+s.slice(5,7)); // YYYY-MM-DD
+    return null;
+  }
+
+  for (let i=0;i<rows.length;i++){
+    if (idxMeas >= 0){
+      const rawQ = String(rows[i][idxMeas]||"").trim();
+      const q = parseFloat(rawQ.replace(',', '.'));
+      if (rawQ === "" || (!isNaN(q) && q === 0)) continue;
+    }
+    const rawDate = idxDate>=0 ? String(rows[i][idxDate]||"").trim() : "";
+    const ym = yymmFrom(rawDate);
+    if (ym != null){
+      if (ym < minYM) minYM = ym;
+      if (ym > maxYM) maxYM = ym;
+    }
+    cnt++;
+  }
+  if (minYM === 999999) minYM = 0;
+  return { rows: cnt|0, minYM, maxYM };
+}
+
+// --- Öffentliche Getter für SAC ---
+getSigRows(){
+  const dateCol   = this.getAttribute("datecolumn")||"Date";
+  const measureCol= this.getAttribute("measurecolumn")||"Quantity";
+  return this._getSignature(dateCol, measureCol).rows|0;
+}
+getSigMinYM(){
+  const dateCol   = this.getAttribute("datecolumn")||"Date";
+  const measureCol= this.getAttribute("measurecolumn")||"Quantity";
+  return this._getSignature(dateCol, measureCol).minYM|0;
+}
+getSigMaxYM(){
+  const dateCol   = this.getAttribute("datecolumn")||"Date";
+  const measureCol= this.getAttribute("measurecolumn")||"Quantity";
+  return this._getSignature(dateCol, measureCol).maxYM|0;
+} 
+
   
 }
 customElements.define('csv-oneclick', CsvOneClick);
