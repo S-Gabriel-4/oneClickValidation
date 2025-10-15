@@ -22,7 +22,7 @@ class CsvOneClick extends HTMLElement {
       <div class="card">
         <div class="row">
           <input id="file" type="file" accept=".csv,.txt" />
-          <span id="fname" class="pill">no File</span>
+          <span id="fname" class="pill">no file</span>
         </div>
 
         <div id="drop" class="drop">Drag CSV file here </div>
