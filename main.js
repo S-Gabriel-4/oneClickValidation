@@ -170,6 +170,21 @@ class CsvOneClick extends HTMLElement {
     this._dupCount = dupr.count|0;
     this._els.dup.textContent = String(this._dupCount);
 
+    // >>> Treat duplicates as an error (with details)
+    if (this._dupCount > 0) {
+      var list = [];
+      var limit = this._dups.length < 50 ? this._dups.length : 50; // cap details
+      var i = 0;
+      while (i < limit) {
+        var d = this._dups[i];
+        list.push(d.invoiceNumber + "|" + d.invoicePosition + " (" + d.count + ")");
+        i = i + 1;
+      }
+      var details = list.join(", ");
+      if (details.length > 1000) { details = details.substring(0, 1000) + "…"; }
+      this._errors.push("Duplicates found (" + this._dupCount + "). Details: " + details);
+    }
+
     // date & signature
     const maxMonths = parseInt(this.getAttribute("maxmonthsage")||"1",10) || 1;
     const dateCol   = this.getAttribute("datecolumn")||"Date";
