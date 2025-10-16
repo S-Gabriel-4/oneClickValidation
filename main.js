@@ -21,8 +21,8 @@ class CsvOneClick extends HTMLElement {
 
       <div class="card">
         <div class="row">
-          <!-- hide native input to remove localized browser text -->
-          <input id="file" type="file" accept=".csv,.txt" style="display:none" />
+          <!-- hide native input to avoid browser-localized text -->
+          <input id="file" type="file" accept=".csv" style="display:none" />
           <button id="pick" type="button" class="btn">Select file</button>
           <span id="fname" class="pill">no file</span>
         </div>
@@ -62,21 +62,18 @@ class CsvOneClick extends HTMLElement {
     this._errors = [];
     this._fileName = "";
 
-    // signature values (for SAC script comparison)
+    // signature (for SAC checks)
     this._sigRows  = 0;
     this._sigMinYM = 0;    // YYYYMM
     this._sigMaxYM = 0;    // YYYYMM
   }
 
-  // only keep attributes relevant for validation
   static get observedAttributes(){ 
     return ["datecolumn","measurecolumn","invoicecol","positioncol","maxmonthsage"];
   }
 
   connectedCallback(){
     const f = this._els.file, d = this._els.drop, pick = this._els.pick;
-
-    // custom button opens native dialog
     pick.addEventListener('click', function(){ f.click(); });
 
     f.addEventListener('change', ()=> this._readFile(f.files && f.files[0]));
@@ -93,44 +90,92 @@ class CsvOneClick extends HTMLElement {
   getFileName(){ return this._fileName||""; }
   getDuplicateCount(){ return this._dupCount|0; }
   getErrorsText(){ return this._errors.join("\n"); }
-
-  // signature getters
   getSigRows(){ return this._sigRows|0; }
   getSigMinYM(){ return this._sigMinYM|0; }
   getSigMaxYM(){ return this._sigMaxYM|0; }
 
   // ---------- Internal ----------
+  _resetState(){
+    this._text = "";
+    this._rows = 0;
+    this._dups = [];
+    this._dupCount = 0;
+    this._errors = [];
+    this._sigRows = 0;
+    this._sigMinYM = 0;
+    this._sigMaxYM = 0;
+    this._els.count.textContent = "0";
+    this._els.dup.textContent = "0";
+  }
+
+  _showError(text){
+    this._els.msg.innerHTML = '<div class="errors">' + this._escape(text) + '</div>';
+  }
+
   _readFile(file){
     if(!file) return;
-    this._fileName = file.name;
-    this._els.fname.textContent = file.name;
+
+    // 1) Hard gate: only .csv by extension
+    var name = file.name || "";
+    var lower = name.toLowerCase();
+    var allowed = lower.endsWith(".csv");
+    if (!allowed){
+      this._resetState();
+      this._fileName = "";
+      this._els.fname.textContent = "no file";
+      this._showError("Only CSV files are allowed.");
+      // expose state to Story
+      this._emitProps({ rowCount: 0, fileName: "", dupCount: 0, errorsText: "Only CSV files are allowed.", isValid: false });
+      this.dispatchEvent(new CustomEvent('validated', { detail: { fileName:"", rowCount:0, dupCount:0, isValid:false, errors:["Only CSV files are allowed."], sigRows:0, sigMinYM:0, sigMaxYM:0 }}));
+      return;
+    }
+
+    // ok
+    this._fileName = name;
+    this._els.fname.textContent = name;
 
     const fr = new FileReader();
     fr.onload = e=>{
       this._text = e.target.result || "";
+
+      // 2) Soft gate: first non-empty line must contain a CSV delimiter
+      var lines = this._text.split(/\r\n|\n|\r/);
+      var k = 0; while(k<lines.length && lines[k].trim()===""){ k = k + 1; }
+      var header = (k<lines.length) ? lines[k] : "";
+      var looksCsv = /[;,|\t]/.test(header);  // ; , | or tab
+      if (!looksCsv){
+        this._resetState();
+        this._showError("The selected file does not look like CSV (no delimiter detected in header).");
+        this._emitProps({ rowCount: 0, fileName: name, dupCount: 0, errorsText: "Not a CSV header.", isValid: false });
+        this.dispatchEvent(new CustomEvent('validated', { detail: { fileName:name, rowCount:0, dupCount:0, isValid:false, errors:["Not a CSV header."], sigRows:0, sigMinYM:0, sigMaxYM:0 }}));
+        return;
+      }
+
       this._runValidations();
     };
     fr.readAsText(file);
   }
 
   _runValidations(){
-    // reset
+    // reset errors
     this._errors = [];
+
+    // rows
     this._rows = this._countRows(this._text);
     this._els.count.textContent = String(this._rows);
 
-    // duplicates (Invoice + Position)
+    // duplicates
     const dupr = this._scanDuplicates(this._text);
     this._dups = dupr.dups;
     this._dupCount = dupr.count|0;
     this._els.dup.textContent = String(this._dupCount);
 
-    // date check + signature from CSV
+    // date & signature
     const maxMonths = parseInt(this.getAttribute("maxmonthsage")||"1",10) || 1;
     const dateCol   = this.getAttribute("datecolumn")||"Date";
     const measureCol= this.getAttribute("measurecolumn")||"Quantity";
+    const dateInfo  = this._scanDatesAndSignature(this._text, dateCol, measureCol, maxMonths);
 
-    const dateInfo = this._scanDatesAndSignature(this._text, dateCol, measureCol, maxMonths);
     var j=0; while(j<dateInfo.errors.length){ this._errors.push(dateInfo.errors[j]); j=j+1; }
 
     // set signature
@@ -138,10 +183,8 @@ class CsvOneClick extends HTMLElement {
     this._sigMinYM = dateInfo.minYM;
     this._sigMaxYM = dateInfo.maxYM;
 
-    // render message
+    // render + expose
     this._renderMessage();
-
-    // expose to story
     this._emitProps({
       rowCount: this._rows,
       fileName: this._fileName,
@@ -206,22 +249,27 @@ class CsvOneClick extends HTMLElement {
   }
 
   _scanDuplicates(text){
-    const {header, rows} = this._parseCSV(text);
-    const name = n => n.toLowerCase().replace(/[\s_]+/g,'');
+    const parsed = this._parseCSV(text);
+    const header = parsed.header;
+    const rows = parsed.rows;
+
+    const name = function(n){ return n.toLowerCase().replace(/[\s_]+/g,''); };
     const invoiceCol = this.getAttribute("invoicecol")||"Invoice_Number";
     const positionCol= this.getAttribute("positioncol")||"Invoice_position_number";
-    const idxInv = header.findIndex(h => name(h) === name(invoiceCol));
-    const idxPos = header.findIndex(h => name(h) === name(positionCol));
+    const idxInv = header.findIndex(function(h){ return name(h) === name(invoiceCol); });
+    const idxPos = header.findIndex(function(h){ return name(h) === name(positionCol); });
     if (idxInv < 0 || idxPos < 0) return {count:0,dups:[]};
 
     const seen = Object.create(null);
     const dups = [];
-    for (let r=0;r<rows.length;r++){
+    let r=0; while(r<rows.length){
       const inv = (rows[r][idxInv]||"").trim();
       const pos = (rows[r][idxPos]||"").trim();
-      if(!inv && !pos) continue;
-      const key = inv + "|" + pos;
-      if (seen[key] == null) seen[key] = 1; else seen[key] = seen[key] + 1;
+      if(inv || pos){
+        const key = inv + "|" + pos;
+        if (seen[key] == null) { seen[key] = 1; } else { seen[key] = seen[key] + 1; }
+      }
+      r = r + 1;
     }
     for (const k in seen){
       if (seen[k] >= 2){
@@ -232,7 +280,7 @@ class CsvOneClick extends HTMLElement {
     return { count: dups.length, dups };
   }
 
-  // Date validation + signature (expects CSV date as YYYYMMDD; converts to YYYY-MM-DD for message)
+  // expects CSV date as YYYYMMDD; converts to YYYY-MM-DD for message, builds signature (min/max YYYYMM)
   _scanDatesAndSignature(text, dateColName, measureColName, maxMonths){
     const out = { errors: [], minYM: 0, maxYM: 0 };
     const parsed = this._parseCSV(text);
@@ -240,15 +288,15 @@ class CsvOneClick extends HTMLElement {
     const rows = parsed.rows;
     if (!header.length) return out;
 
-    const name = n => n.toLowerCase().replace(/[\s_]+/g,'');
-    const idxDate = header.findIndex(h => name(h) === name(dateColName));
-    const idxMeas = header.findIndex(h => name(h) === name(measureColName));
+    const name = function(n){ return n.toLowerCase().replace(/[\s_]+/g,''); };
+    const idxDate = header.findIndex(function(h){ return name(h) === name(dateColName); });
+    const idxMeas = header.findIndex(function(h){ return name(h) === name(measureColName); });
     if (idxDate < 0) return out;
 
     const today = new Date();
     const tY = today.getFullYear();
     const tM = today.getMonth()+1;
-    const ym = (y,m)=> y*12+m;
+    const ym = function(y,m){ return y*12+m; };
 
     let minYM = 999999, maxYM = 0;
 
